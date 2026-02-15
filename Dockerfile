@@ -4,27 +4,34 @@ FROM python:3.10-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies required for FAISS and audio processing
+# Memory-friendly environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV MALLOC_ARENA_MAX=2
+ENV TRANSFORMERS_CACHE=/tmp/hf_cache
+ENV SENTENCE_TRANSFORMERS_HOME=/tmp/st_cache
+
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
-    libasound2-dev \
-    portaudio19-dev \
     libffi-dev \
     libssl-dev \
-    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt ./requirements.txt
 
-# Install python dependencies
+# Install CPU-only PyTorch first (much smaller than full torch with CUDA)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
 
-# Expose port 8000
-EXPOSE 8000
+# Expose port
+EXPOSE 10000
 
-# Command to run the application
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+# Command to run the application with memory-friendly settings
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1 --limit-max-requests 1000"]

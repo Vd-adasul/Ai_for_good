@@ -1,15 +1,12 @@
 import os
-import time
 from typing import List, Optional
 from langchain_core.documents import Document
-from PyPDF2 import PdfReader
-import pdfplumber
-from unstract.llmwhisperer import LLMWhispererClientV2
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def is_scanned_pdf(pdf_path: str, threshold: int = 50) -> bool:
     """Returns True if scanned (very little extractable text)."""
     try:
+        from PyPDF2 import PdfReader
         reader = PdfReader(pdf_path)
         text_len = 0
         for page in reader.pages[:3]:  # check first 3 pages
@@ -24,6 +21,7 @@ def extract_text_digital(pdf_path: str) -> str:
     """Extracts text from digital PDF using pdfplumber."""
     text = ""
     try:
+        import pdfplumber
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
                 page_text = page.extract_text()
@@ -34,11 +32,18 @@ def extract_text_digital(pdf_path: str) -> str:
     return text.strip()
 
 def extract_scanned_llmwhisperer(pdf_path: str, api_key: Optional[str]) -> str:
-    """Extracts text from scanned PDF using LLMWhisperer."""
+    """Extracts text from scanned PDF using LLMWhisperer (optional)."""
     if not api_key:
         print(f"Skipping {pdf_path} - No LLMWHISPERER_API_KEY found.")
         return ""
     
+    try:
+        from unstract.llmwhisperer import LLMWhispererClientV2
+    except ImportError:
+        print("llmwhisperer-client not installed. Skipping OCR.")
+        return ""
+    
+    import time
     print(f"Uploading {os.path.basename(pdf_path)} to LLMWhisperer...")
     try:
         client = LLMWhispererClientV2(
@@ -81,9 +86,6 @@ def process_single_pdf(pdf_path: str, llm_whisperer_key: Optional[str] = None) -
         text_content = extract_text_digital(pdf_path)
         
     if text_content:
-        # Create Document without splitting yet, or we can split here.
-        # RAG typically expects chunks. Let's return the full doc and let the caller split,
-        # OR split here for consistency. Let's return the full doc first.
         doc = Document(
             page_content=text_content,
             metadata={"district": district_name, "source": filename}

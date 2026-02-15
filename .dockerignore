@@ -11,3 +11,11 @@ frontend
 *.pyd
 .Python
 *.log
+*.txt
+!requirements.txt
+test_*.py
+scripts
+.dockerignore
+README.md
+embedding_error.txt
+rag_error.txt

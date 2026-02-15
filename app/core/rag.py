@@ -1,5 +1,6 @@
 import os
 import traceback
+import gc
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
@@ -40,14 +41,23 @@ class RAGEngine:
     def __init__(self):
         self.vectorstore = None
         self.llm = None
-        self._initialize()
+        self._initialized = False
 
-    def _initialize(self):
-        """Initializes FAISS and LLM."""
+    def _ensure_initialized(self):
+        """Lazy initialization — only loads models on first API call, not at startup.
+        This lets the server bind its port quickly and avoids OOM during startup."""
+        if self._initialized:
+            return
+        self._initialized = True  # Mark as attempted even if it fails
+        
         if os.path.exists(INDEX_PATH):
             try:
-                # Load Embeddings
-                embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+                # Load Embeddings with minimal memory settings
+                embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2",
+                    model_kwargs={"device": "cpu"},
+                    encode_kwargs={"normalize_embeddings": True},
+                )
                 
                 # Load FAISS
                 self.vectorstore = FAISS.load_local(
@@ -56,7 +66,7 @@ class RAGEngine:
                     allow_dangerous_deserialization=True
                 )
                 
-                # Load LLM
+                # Load LLM (lightweight — just an API client)
                 if GROQ_API_KEY:
                     self.llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY, 
@@ -65,6 +75,10 @@ class RAGEngine:
                     print("RAG Engine Initialized Successfully.")
                 else:
                     print("Warning: GROQ_API_KEY not found. RAG will not work.")
+                
+                # Force garbage collection after loading models
+                gc.collect()
+                
             except Exception as e:
                 print(f"Error initializing RAG: {e}")
                 print(f"Full traceback:\n{traceback.format_exc()}")
@@ -73,6 +87,9 @@ class RAGEngine:
 
     def get_answer(self, query: str, context: str = "", history: list = []) -> str:
         """Retrieves answer from RAG using manual retrieve + LLM pattern with history."""
+        # Lazy init on first call
+        self._ensure_initialized()
+        
         if not self.llm or not self.vectorstore:
             missing = []
             if not self.llm: missing.append("LLM")
@@ -81,8 +98,6 @@ class RAGEngine:
         
         try:
             # 1. Retrieve relevant documents
-            # If we have history, we might want to rewrite the query, but for now let's just use the latest query
-            # for retrieval to keep it simple and focused.
             docs = self.vectorstore.similarity_search(query, k=3)
             
             # 1.5 Load static context
@@ -129,6 +144,7 @@ Provide a helpful, practical answer in Markdown:"""
 
     def add_document(self, file_path: str) -> str:
         """Adds a new PDF document to the RAG index dynamically."""
+        self._ensure_initialized()
         try:
             from app.core.ingestion import process_single_pdf, get_text_chunks
             
@@ -149,7 +165,10 @@ Provide a helpful, practical answer in Markdown:"""
                 return f"Successfully added {len(chunks)} new chunks to the Knowledge Base."
             else:
                 # Initialize if not exists
-                embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+                embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2",
+                    model_kwargs={"device": "cpu"},
+                )
                 self.vectorstore = FAISS.from_documents(chunks, embeddings)
                 self.vectorstore.save_local(INDEX_PATH)
                 return f"Initialized new Knowledge Base with {len(chunks)} chunks."

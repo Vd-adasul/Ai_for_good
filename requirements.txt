@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 requests
 firebase-admin
@@ -10,13 +10,9 @@ faiss-cpu
 sentence-transformers
 groq
 python-dotenv
-pandas
-openpyxl
-pymupdf
 jinja2
-llmwhisperer-client
 pdfplumber
 PyPDF2
-faster-whisper
 langchain-groq
 langchain-huggingface
+numpy<2
