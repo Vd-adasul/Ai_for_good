@@ -1,0 +1,13 @@
+__pycache__
+venv
+env
+.env
+.git
+.gitignore
+frontend/node_modules
+frontend
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.log
